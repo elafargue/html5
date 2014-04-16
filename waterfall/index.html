@@ -16,9 +16,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
     <script type="text/javascript" src="chroma.js"></script>
     <script src="resampler.js"></script>
 </head>
-<body>
+<body style="background-color: white;">
 
-<canvas id="canvas" width="1024" height="256" style="display: block; background-color: black ;"></canvas>
+<button onclick="init();">Start</button>
+<button onclick="monitor();">Toggle audio monitor</button>
+    
+<canvas id="canvas" width="1024" height="256" style="display: block; background-color: black;"></canvas>
 
 <script type="text/javascript">
 
@@ -30,10 +33,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
         window.AudioContext = window.webkitAudioContext;
     }
     
+    navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+
+    
     // Get the microphone input
     function getUserMedia(dictionary, callback) {
         try {
-            navigator.webkitGetUserMedia(dictionary, callback, onError);
+            navigator.getUserMedia(dictionary, callback, onError);
         } catch (e) {
             alert('webkitGetUserMedia threw exception :' + e);
         }
@@ -55,15 +61,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
     }
     
     // Events
-    // init() once the page has finished loading.
-    window.onload = init;
 
     var context;
 
     var audioBuffer;
     var sourceNode;
+    var filterNode;
     var analyser;
     var javascriptNode;
+    var monitoring = false;
 
     // get the context from the canvas to draw on
     var ctx = $("#canvas").get()[0].getContext("2d");
@@ -100,7 +106,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                 function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
 
                         window.setTimeout( callback, 1000 / 60 );
-
                 };
         } )();
 }
@@ -112,6 +117,20 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
             audio: true
         };
         getUserMedia(audioConstraints, gotStream);
+    }
+    
+    function pause() {
+        
+    }
+    
+    function monitor() {
+        if (!monitoring)
+            sourceNode.connect(context.destination);
+        else {
+            sourceNode.disconnect();
+            sourceNode.connect(filterNode);
+        }
+        monitoring = !monitoring;
     }
 
     // Called once we get a live audio stream of user input
@@ -126,18 +145,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
         
         // Create an AudioNode from the stream (live input)
-        var sourceNode = context.createMediaStreamSource(stream);
+        sourceNode = context.createMediaStreamSource(stream);
         
         // Filter the audio to limit bandwidth to 4kHz before resampling,
         // by using a BiQuadFilterNode:
-        var filterNode = context.createBiquadFilter();
+        filterNode = context.createBiquadFilter();
         filterNode.type = filterNode.LOWPASS; // Low pass
         filterNode.frequency.value = 3800;
         filterNode.Q.value = 1.5;
         filterNode.gain.value = 0;
         
         sourceNode.connect(filterNode);
-        sourceNode.connect(context.destination);
         
 
         // Create an audio resampler:
@@ -148,6 +166,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
             //
             // The output data will be 1638 or 1939 samples long (8192 samples divided by 5)
             var rss  = new Resampler(44100, 8820, 1, 1639, true);
+            //var ring = new Float32Array(8192);
+            //var idx = 0;
             return function(event) {
                 var inp, out;
                 //console.log(event);
@@ -158,10 +178,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                 // We can edit the values of the array, but not change the reference -
                 // if we do, it won't do anything, the audioBuffer will keep its internal
                 // reference: therefore we need to manually copy all samples:
-                for (var i=0; i < l; ++i) {
-                   // ring[(i+idx)%8192] = rss.outputBuffer[i];
-                   out[i] = rss.outputBuffer[i];
-                }
+                //for (j = 0; j < 8192; j+=2048)
+                    for (var i=0; i < l; ++i) {
+                        // ring[(i+idx)%8192] = rss.outputBuffer[i];
+                        out[i] = rss.outputBuffer[i];
+                    }
+            
+                // Now copy the ring buffer to the output channel
+                //for (var i=0; i < 8192; ++i) {
+                //    out[i] = ring[(idx+i)%8192];
+                //}
+                //idx = (idx+l)%8192;    
+                //requestAnimationFrame(drawSpectrogram);
             };
         }());
 
@@ -178,12 +206,19 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
         // silence, since we have a sample rate mismatch after the resampler node.
         resamplerNode.connect(analyser);
         
+        //requestAnimationFrame(drawSpectrogram);
+        
         var syncDisplay  = keep(context.createScriptProcessor(2048,1,1));
         syncDisplay.onaudioprocess = function() {
-              analyser.getByteFrequencyData(array);
-              requestAnimationFrame(drawSpectrogram);
-        }
+                    // get the average for the first channel
+                   
+                    analyser.getByteFrequencyData(array);
+                    requestAnimationFrame(drawSpectrogram);
+                }
         syncDisplay.connect(context.destination);
+        
+        //analyser.connect(context.destination);
+
     }
 
     // log if an error occurs
@@ -221,8 +256,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
             ctx.fillRect(i, 1, 1, 1);
         }
 
+        // set translate on the canvas
+        //ctx.translate(0, 1);
         // draw the copied image
         ctx.drawImage(tempCanvas, 0, 0, 1024, 256, 0, 1, 1024, 256);
+
+        // reset the transformation matrix
+        //ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     }
 

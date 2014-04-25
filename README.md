@@ -7,9 +7,11 @@ Experiments with HTML5 and Javascript
    - waterfall: simple javascript "waterfall" display of microphone, using audio nodes
    - waterfall2: more advanced waterfall, using DSP.js for processing. More UI controls too.
 
+  More info at http://aerodynes.org/
 
+License & copyright:
 
- Copyright (C) 2014 By Edouard Lafargue.
+ All original work in this repository is Copyright (C) 2014 By Edouard Lafargue.
         
  Written by Edouard Lafargue (edouard@lafargue.name)
  All Rights Reserved.
